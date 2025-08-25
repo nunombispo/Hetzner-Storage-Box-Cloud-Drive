@@ -28,7 +28,6 @@ def load_config():
         'webdav_password': os.getenv('HETZNER_PASSWORD'),
         'webdav_timeout': 30
     }
-    print(options)
     return options
 
 def create_webdav_client(config_options):
@@ -57,8 +56,6 @@ class LocalHandler(FileSystemEventHandler):
             rel_dest = str(Path(event.dest_path).relative_to(LOCAL_DIR))
             remote_path_dest = f"{REMOTE_DIR}/{rel_dest}".replace("\\", "/")
             print(f"Moving {rel_source} to {rel_dest}")
-            print(f"{remote_path_source}")
-            print(f"{remote_path_dest}")
             self.client.move(remote_path_source, remote_path_dest)
             print(f"Moved {remote_path_source} to {remote_path_dest}")
         except Exception as e:
