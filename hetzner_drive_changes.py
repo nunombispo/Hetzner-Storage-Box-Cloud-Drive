@@ -18,7 +18,6 @@ REMOTE_DIR = "/HetznerDrive"
 load_dotenv()
 
 # --- Helpers -----------------------------------------------------------------
-
 def load_config():
     """Load configuration from environment variables"""
     # Convert to webdavclient3 format
@@ -37,7 +36,6 @@ def create_webdav_client(config_options):
     return client
 
 # --- Watchdog Local Event Handler --------------------------------------------
-
 class LocalHandler(FileSystemEventHandler):
     def __init__(self, client):
         self.client = client
@@ -98,7 +96,6 @@ class LocalHandler(FileSystemEventHandler):
             # Don't re-raise - we want to continue monitoring other files
 
 # --- Main Sync Loop ----------------------------------------------------------
-
 def main():
     try:
         config_options = load_config()
@@ -126,7 +123,6 @@ def main():
         print("Starting file sync (Ctrl+C to stop)...")
         try:
             while True:
-                # TODO: poll remote files every 30s and download if changed
                 time.sleep(30)
         except KeyboardInterrupt:
             print("\nStopping sync...")

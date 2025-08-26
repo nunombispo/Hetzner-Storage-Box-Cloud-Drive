@@ -97,8 +97,140 @@ class LocalHandler(FileSystemEventHandler):
             print(f"Error uploading {path}: {e}")
             # Don't re-raise - we want to continue monitoring other files
 
-# --- Main Sync Loop ----------------------------------------------------------
+# --- Startup Sync -------------------------------------------------------------
+def startup_sync(client):
+    """Perform initial sync: upload local files to remote and delete remote files not present locally"""
+    print("Starting initial sync...")
+    
+    # Get list of all local files and directories
+    local_files = set()
+    local_dirs = set()
+    
+    for root, dirs, files in os.walk(LOCAL_DIR):
+        root_path = Path(root)
+        for file in files:
+            rel_path = str(root_path.joinpath(file).relative_to(LOCAL_DIR)).replace("\\", "/")
+            local_files.add(rel_path)
+        for dir_name in dirs:
+            rel_path = str(root_path.joinpath(dir_name).relative_to(LOCAL_DIR)).replace("\\", "/")
+            local_dirs.add(rel_path)
+    
+    print(f"Found {len(local_files)} local files and {len(local_dirs)} local directories")
+    
+    # Get list of all remote files and directories
+    remote_files = set()
+    remote_dirs = set()
+    
+    try:
+        def list_remote_recursive(path):
+            try:
+                items = client.list(path)
+                for item in items:
+                    if item.endswith('/'):
+                        # Directory
+                        dir_name = item.rstrip('/').split('/')[-1]
+                        if dir_name:  # Skip root path
+                            rel_path = path.replace(REMOTE_DIR, '').lstrip('/')
+                            if rel_path:
+                                remote_dirs.add(f"{rel_path}/{dir_name}")
+                            else:
+                                remote_dirs.add(dir_name)
+                            # Recursively list subdirectories
+                            list_remote_recursive(f"{path}/{dir_name}")
+                    else:
+                        # File
+                        rel_path = path.replace(REMOTE_DIR, '').lstrip('/')
+                        if rel_path:
+                            remote_files.add(f"{rel_path}/{item}")
+                        else:
+                            remote_files.add(item)
+            except Exception as e:
+                print(f"Warning: Could not list remote directory {path}: {e}")
+        
+        list_remote_recursive(REMOTE_DIR)
+        print(f"Found {len(remote_files)} remote files and {len(remote_dirs)} remote directories")
+        
+    except Exception as e:
+        print(f"Warning: Could not list remote files: {e}")
+        print("Proceeding with upload only...")
+    
+    # Delete remote files that don't exist locally
+    deleted_count = 0
+    for remote_file in remote_files:
+        if remote_file not in local_files:
+            try:
+                remote_path = f"{REMOTE_DIR}/{remote_file}"
+                print(f"Deleting remote file (not in local): {remote_file}")
+                client.clean(remote_path)
+                deleted_count += 1
+            except Exception as e:
+                print(f"Error deleting remote file {remote_file}: {e}")
+    
+    print(f"Deleted {deleted_count} remote files")
+    
+    # Delete remote directories that don't exist locally
+    deleted_dirs = 0
+    for remote_dir in sorted(remote_dirs, key=len, reverse=True):  # Delete deepest dirs first
+        if remote_dir not in local_dirs:
+            try:
+                remote_path = f"{REMOTE_DIR}/{remote_dir}"
+                print(f"Deleting remote directory (not in local): {remote_dir}")
+                client.clean(remote_path)
+                deleted_dirs += 1
+            except Exception as e:
+                print(f"Error deleting remote directory {remote_dir}: {e}")
+    
+    print(f"Deleted {deleted_dirs} remote directories")
+    
+    # Create remote directories that don't exist
+    created_dirs = 0
+    for local_dir in local_dirs:
+        try:
+            remote_path = f"{REMOTE_DIR}/{local_dir}"
+            client.mkdir(remote_path)
+            created_dirs += 1
+        except Exception as e:
+            # Directory might already exist
+            pass
+    
+    print(f"Created {created_dirs} remote directories")
 
+    # Upload local files that don't exist remotely or are newer
+    uploaded_count = 0
+    for local_file in local_files:
+        try:
+            local_path = LOCAL_DIR / local_file
+            remote_path = f"{REMOTE_DIR}/{local_file}"
+            
+            # Check if remote file exists and compare modification times
+            should_upload = True
+            try:
+                remote_info = client.info(remote_path)
+                if remote_info:
+                    # File exists remotely, check if local is newer
+                    local_mtime = local_path.stat().st_mtime
+                    remote_mtime = float(remote_info.get('modified', 0))
+                    if local_mtime <= remote_mtime:
+                        should_upload = False
+            except:
+                # Remote file doesn't exist or can't get info
+                pass
+            
+            if should_upload:
+                print(f"Uploading: {local_file}")
+                client.upload_sync(remote_path=remote_path, local_path=str(local_path))
+                uploaded_count += 1
+            else:
+                print(f"Skipping (up to date): {local_file}")
+                
+        except Exception as e:
+            print(f"Error uploading {local_file}: {e}")
+    
+    print(f"Uploaded {uploaded_count} files")
+    
+    print("Initial sync completed!")
+
+# --- Main Sync Loop ----------------------------------------------------------
 def main():
     try:
         config_options = load_config()
@@ -116,6 +248,9 @@ def main():
         except Exception as e:
             print(f"Warning: Could not create remote directory {REMOTE_DIR}: {e}")
             print("This might be normal if the directory already exists or if you don't have write permissions")
+
+        # Perform initial sync
+        startup_sync(client)
 
         # Start local watcher
         handler = LocalHandler(client)
