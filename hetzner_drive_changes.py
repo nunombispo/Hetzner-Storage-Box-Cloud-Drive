@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-hetzner_drive_sync.py - Python-only 2-way sync with Hetzner Storage Box (WebDAV)
-"""
-
 import time
 import os
 from pathlib import Path

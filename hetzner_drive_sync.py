@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-hetzner_drive_sync.py - Python-only 2-way sync with Hetzner Storage Box (WebDAV)
-"""
-
 import time
 import os
 from pathlib import Path
@@ -261,7 +256,6 @@ def main():
         print("Starting file sync (Ctrl+C to stop)...")
         try:
             while True:
-                # TODO: poll remote files every 30s and download if changed
                 time.sleep(30)
         except KeyboardInterrupt:
             print("\nStopping sync...")
